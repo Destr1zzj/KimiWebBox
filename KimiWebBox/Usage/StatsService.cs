@@ -5,6 +5,9 @@ internal sealed class StatsSnapshot
     public long Today, Week, Month, AllTime;
     public string LimitsStatus = "notConfigured";
     public List<LimitWindow> Windows = new();
+    public SortedDictionary<string, long> Daily = new();
+    public Dictionary<string, long> ModelsToday = new();
+    public Dictionary<string, long> ModelsMonth = new();
     public DateTime UpdatedAt = DateTime.Now;
 }
 
@@ -40,6 +43,9 @@ internal sealed class StatsService : IDisposable
                 Current.Week = s.WeekTokens();
                 Current.Month = s.Month.TotalTokens;
                 Current.AllTime = s.AllTime.TotalTokens;
+                Current.Daily = new SortedDictionary<string, long>(s.Daily);
+                Current.ModelsToday = new Dictionary<string, long>(s.Today.Models);
+                Current.ModelsMonth = new Dictionary<string, long>(s.Month.Models);
                 Current.UpdatedAt = DateTime.Now;
                 Updated?.Invoke(Current);
             }

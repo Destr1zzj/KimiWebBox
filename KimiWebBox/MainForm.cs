@@ -118,8 +118,13 @@ internal sealed class MainForm : Form
                 await _web.EnsureCoreWebView2Async(env);
                 _web.CoreWebView2.WebMessageReceived += (_, e) =>
                 {
-                    var msg = e.TryGetWebMessageAsString();
-                    if (msg == "retry") { _ = InitAsync(); return; }
+                    // WebMessageAsJson works for any posted value; TryGetWebMessageAsString
+                    // throws for non-string (object) messages.
+                    string? msg = null;
+                    try { msg = e.WebMessageAsJson; }
+                    catch (Exception ex) { ShellLog.Write("webmsg AsJson failed: " + ex.Message); }
+                    ShellLog.Write("webmsg: " + (msg ?? "(null)"));
+                    if (msg is "retry" or "\"retry\"") { _ = InitAsync(); return; }
                     try
                     {
                         using var doc = JsonDocument.Parse(msg ?? "");
@@ -127,7 +132,7 @@ internal sealed class MainForm : Form
                         if (type == "openSettings") OpenSettings();
                         else if (type == "refresh") { _stats.RefreshUsage(); _ = _stats.RefreshLimitsAsync(); }
                     }
-                    catch { }
+                    catch (Exception ex) { ShellLog.Write("webmsg dispatch failed: " + ex.Message); }
                 };
                 // External links go to the system browser, not inside the box.
                 _web.CoreWebView2.NewWindowRequested += (_, e) =>
@@ -193,6 +198,9 @@ internal sealed class MainForm : Form
                 resetsAt = w.ResetsAt,
                 detail = w.Detail,
             }),
+            daily = s.Daily.Select(kv => new { date = kv.Key, tokens = kv.Value }),
+            modelsToday = s.ModelsToday.Select(kv => new { id = kv.Key, tokens = kv.Value }).OrderByDescending(m => m.tokens),
+            modelsMonth = s.ModelsMonth.Select(kv => new { id = kv.Key, tokens = kv.Value }).OrderByDescending(m => m.tokens),
         };
         var json = JsonSerializer.Serialize(payload);
         _ = _web.CoreWebView2.ExecuteScriptAsync($"window.KimiQuota && window.KimiQuota.update({json})");
@@ -200,12 +208,22 @@ internal sealed class MainForm : Form
 
     private void OpenSettings()
     {
-        using var dlg = new SettingsForm(_config);
-        if (dlg.ShowDialog(this) == DialogResult.OK) _ = _stats.RefreshLimitsAsync();
+        try
+        {
+            ShellLog.Write("OpenSettings enter, Visible=" + Visible);
+            using var dlg = new SettingsForm(_config) { TopMost = true, StartPosition = FormStartPosition.CenterScreen };
+            var result = Visible ? dlg.ShowDialog(this) : dlg.ShowDialog();
+            ShellLog.Write("OpenSettings result=" + result);
+            if (result == DialogResult.OK) _ = _stats.RefreshLimitsAsync();
+        }
+        catch (Exception ex)
+        {
+            ShellLog.Write("OpenSettings failed: " + ex);
+            MessageBox.Show(this, ex.ToString(), "打开设置失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
-    private static string FmtTokens(long v) =>
-        v >= 1_000_000 ? $"{v / 1_000_000.0:0.#}M" : v >= 1_000 ? $"{v / 1_000.0:0.#}k" : v.ToString();
+    private static string FmtTokens(long v) => v.ToString("N0");
 
     private static string StatusHtml(string text) => $$$"""
         <!doctype html><html><head><meta charset="utf-8"><style>
