@@ -6,5 +6,8 @@ dist/
 *.user
 .vs/
 
+# local secrets (kimi-auth cookie / API key)
+*.local.json
+
 # one-off validation scripts (rejected approach, kept for reference)
 archive/

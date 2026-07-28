@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using System.Text.Json;
+using KimiWebBox.Quota;
+using KimiWebBox.Usage;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Microsoft.Win32;
@@ -12,6 +15,8 @@ internal sealed class MainForm : Form
 
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill };
     private readonly ServerManager _server = new();
+    private readonly AppConfig _config;
+    private readonly StatsService _stats;
     private readonly NotifyIcon _tray;
     private readonly ToolStripMenuItem _autostartItem;
     private readonly bool _startInTray;
@@ -33,9 +38,14 @@ internal sealed class MainForm : Form
         Icon = AppIcon();
         Controls.Add(_web);
 
+        _config = AppConfig.Load();
+        _stats = new StatsService(_config);
+        _stats.Updated += OnStatsUpdated;
+
         var menu = new ContextMenuStrip();
         menu.Items.Add("打开", null, (_, _) => ShowFromTray());
         menu.Items.Add("重启服务", null, async (_, _) => await RestartAsync());
+        menu.Items.Add("额度设置…", null, (_, _) => OpenSettings());
         _autostartItem = new ToolStripMenuItem("开机自启") { CheckOnClick = true, Checked = GetAutostart() };
         _autostartItem.CheckedChanged += (_, _) => SetAutostart(_autostartItem.Checked);
         menu.Items.Add(_autostartItem);
@@ -83,7 +93,11 @@ internal sealed class MainForm : Form
             return;
         }
         _tray.Visible = false;
-        if (_reallyExit) _server.StopOwned();
+        if (_reallyExit)
+        {
+            _stats.Dispose();
+            _server.StopOwned();
+        }
     }
 
     private async Task RestartAsync()
@@ -104,7 +118,16 @@ internal sealed class MainForm : Form
                 await _web.EnsureCoreWebView2Async(env);
                 _web.CoreWebView2.WebMessageReceived += (_, e) =>
                 {
-                    if (e.TryGetWebMessageAsString() == "retry") _ = InitAsync();
+                    var msg = e.TryGetWebMessageAsString();
+                    if (msg == "retry") { _ = InitAsync(); return; }
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(msg ?? "");
+                        var type = doc.RootElement.GetProperty("type").GetString();
+                        if (type == "openSettings") OpenSettings();
+                        else if (type == "refresh") { _stats.RefreshUsage(); _ = _stats.RefreshLimitsAsync(); }
+                    }
+                    catch { }
                 };
                 // External links go to the system browser, not inside the box.
                 _web.CoreWebView2.NewWindowRequested += (_, e) =>
@@ -112,6 +135,8 @@ internal sealed class MainForm : Form
                     e.Handled = true;
                     try { Process.Start(new ProcessStartInfo(e.Uri) { UseShellExecute = true }); } catch { }
                 };
+                await _web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(OverlayScript.Source);
+                _web.CoreWebView2.NavigationCompleted += (_, _) => PushStats();
                 _webReady = true;
             }
 
@@ -132,6 +157,55 @@ internal sealed class MainForm : Form
             MessageBox.Show(this, ex.Message, "KimiWebBox 启动失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
+
+    private void OnStatsUpdated(StatsSnapshot s)
+    {
+        if (IsDisposed) return;
+        try { BeginInvoke(new Action(() => { UpdateTrayTooltip(s); PushStats(); })); } catch { }
+    }
+
+    private void UpdateTrayTooltip(StatsSnapshot s)
+    {
+        var text = $"KimiWebBox · 今日 {FmtTokens(s.Today)}";
+        var session = s.Windows.FirstOrDefault(w => w.Kind == "session");
+        if (s.LimitsStatus == "ok" && session != null)
+            text += $" · 5h {Math.Round(session.RemainingPercent)}%";
+        _tray.Text = text.Length > 63 ? text[..63] : text;
+    }
+
+    private void PushStats()
+    {
+        if (!_webReady || _web.CoreWebView2 == null) return;
+        var s = _stats.Current;
+        var payload = new
+        {
+            today = s.Today,
+            week = s.Week,
+            month = s.Month,
+            allTime = s.AllTime,
+            limitsStatus = s.LimitsStatus,
+            updatedAt = s.UpdatedAt,
+            windows = s.Windows.Select(w => new
+            {
+                kind = w.Kind,
+                label = w.Label,
+                remainingPercent = w.RemainingPercent,
+                resetsAt = w.ResetsAt,
+                detail = w.Detail,
+            }),
+        };
+        var json = JsonSerializer.Serialize(payload);
+        _ = _web.CoreWebView2.ExecuteScriptAsync($"window.KimiQuota && window.KimiQuota.update({json})");
+    }
+
+    private void OpenSettings()
+    {
+        using var dlg = new SettingsForm(_config);
+        if (dlg.ShowDialog(this) == DialogResult.OK) _ = _stats.RefreshLimitsAsync();
+    }
+
+    private static string FmtTokens(long v) =>
+        v >= 1_000_000 ? $"{v / 1_000_000.0:0.#}M" : v >= 1_000 ? $"{v / 1_000.0:0.#}k" : v.ToString();
 
     private static string StatusHtml(string text) => $$$"""
         <!doctype html><html><head><meta charset="utf-8"><style>
