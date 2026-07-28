@@ -1,0 +1,10 @@
+# build outputs
+bin/
+obj/
+dist/
+*.pdb
+*.user
+.vs/
+
+# one-off validation scripts (rejected approach, kept for reference)
+archive/
