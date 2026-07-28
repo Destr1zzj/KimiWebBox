@@ -48,6 +48,9 @@ internal sealed class ServerManager
             {
                 FileName = _kimiExe,
                 Arguments = "web --no-open",
+                // New sessions created from the UI land in the server's cwd workspace —
+                // pin it to the user home instead of inheriting exe dir / System32 (autostart).
+                WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 CreateNoWindow = true,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
