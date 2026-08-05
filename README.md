@@ -64,6 +64,20 @@ dotnet run -- ../KimiWebBox/app.ico
 3. 读取 `%USERPROFILE%\.kimi-code\server.token`,WebView2 加载 `http://127.0.0.1:<port>/#token=<token>`
 4. 关闭主窗口时只隐藏到托盘；从托盘菜单「退出并停止服务」才会终止由本应用拉起的服务进程
 
+## macOS 版
+
+`macos/` 目录提供零构建的 Mac 版（`.app` 包装，无需编译）:
+
+```bash
+cd macos
+./install.sh            # 生成图标并安装到 ~/Applications
+./install.sh --login    # 同时注册登录项（开机自启）
+```
+
+原理与 Windows 版一致：探测/拉起 `kimi web` 后，用 Chrome（或 Edge）的 `--app=` 模式打开，窗口无浏览器元素。要求：macOS 12+、已安装并登录 Kimi Code CLI、Chrome 或 Edge（都没有则退回默认浏览器）。
+
+注意：Mac 版 v1 不含 Windows 版的悬浮用量面板（那层依赖 WebView2 注入）。
+
 ## License
 
 [MIT](LICENSE)

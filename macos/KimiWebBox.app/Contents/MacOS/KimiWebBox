@@ -1,0 +1,50 @@
+#!/bin/zsh
+# KimiWebBox macOS launcher:
+# probe a running kimi web -> start one hidden if absent -> open in app-mode window.
+
+PORT=""
+for p in 58627 58628 58629 58630 58631 58632 58633 58634 58635 58636 58637; do
+  if curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$p/"; then
+    PORT=$p
+    break
+  fi
+done
+
+if [ -z "$PORT" ]; then
+  KIMI="$HOME/.kimi-code/bin/kimi"
+  [ -x "$KIMI" ] || KIMI=$(command -v kimi || true)
+  if [ -z "$KIMI" ]; then
+    osascript -e 'display dialog "未找到 kimi CLI,请先安装 Kimi Code 并完成登录。" buttons {"好"} default button 1 with title "KimiWebBox"' >/dev/null 2>&1
+    exit 1
+  fi
+  nohup "$KIMI" web --no-open >/dev/null 2>&1 &
+  for i in $(seq 1 60); do
+    for p in 58627 58628 58629 58630 58631 58632 58633 58634 58635 58636 58637; do
+      if curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$p/"; then
+        PORT=$p
+        break 2
+      fi
+    done
+    sleep 0.5
+  done
+fi
+
+if [ -z "$PORT" ]; then
+  osascript -e 'display dialog "kimi web 30 秒内未就绪,请手动在终端运行 kimi web 查看原因。" buttons {"好"} default button 1 with title "KimiWebBox"' >/dev/null 2>&1
+  exit 1
+fi
+
+TOKEN=$(cat "$HOME/.kimi-code/server.token" 2>/dev/null)
+URL="http://127.0.0.1:$PORT/"
+[ -n "$TOKEN" ] && URL="${URL}#token=${TOKEN}"
+
+CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+EDGE="/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
+
+if [ -x "$CHROME" ]; then
+  "$CHROME" --app="$URL" >/dev/null 2>&1 &
+elif [ -x "$EDGE" ]; then
+  "$EDGE" --app="$URL" >/dev/null 2>&1 &
+else
+  open "$URL"
+fi
