@@ -57,12 +57,27 @@ internal sealed class StatsService : IDisposable
         });
     }
 
+    private DateTime _lastImportTry = DateTime.MinValue;
+
     public async Task RefreshLimitsAsync()
     {
         if (Interlocked.Exchange(ref _limitsBusy, 1) != 0) return;
         try
         {
             var r = await LimitsClient.Fetch(_config, LocalPort, LocalToken);
+            // 每月额度走 kimi.com access_token（会过期）——缺失时经 WebBridge 自动重取，最多 10 分钟一次
+            if (r.Windows.All(w => w.Kind != "billing") && DateTime.Now - _lastImportTry > TimeSpan.FromMinutes(10))
+            {
+                _lastImportTry = DateTime.Now;
+                var fresh = await WebBridgeToken.TryFetchAsync(allowOpenTab: string.IsNullOrEmpty(_config.KimiAuthToken));
+                if (!string.IsNullOrEmpty(fresh) && fresh != _config.KimiAuthToken)
+                {
+                    ShellLog.Write("webbridge: imported kimi.com access_token");
+                    _config.KimiAuthToken = fresh;
+                    try { _config.Save(); } catch { }
+                    r = await LimitsClient.Fetch(_config, LocalPort, LocalToken);
+                }
+            }
             ShellLog.Write($"limits: status={r.Status} source={r.Source} windows={r.Windows.Count}");
             Current.LimitsStatus = r.Status;
             Current.Windows = r.Windows;
