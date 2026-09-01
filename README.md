@@ -19,7 +19,7 @@ Kimi Code CLI 自带 `kimi web`（本地 Web UI），但每次使用都要开一
 
 - **Token 用量**：只读扫描本机会话文件（`~/.kimi-code/sessions` 与 `~/.kimi/sessions`)，无需任何凭据
 - **额度**：默认**无需任何凭据**——自动走本地 kimi web 的 OAuth 额度接口（使用本机 Kimi Code 登录态），可见 5 小时 + 每周：
-  - 配置 `kimi-auth` Cookie（托盘右键 → 额度设置）可额外解锁每月额度
+  - 配置 kimi.com 的 `access_token`（托盘右键 → 额度设置；浏览器登录 kimi.com → F12 → 控制台执行 `localStorage.getItem('access_token')` 复制）可额外解锁每月额度
   - 或 Kimi Code API Key 作为降级源（仅 5 小时 + 每周）
   - 凭据只保存在本机 `config.local.json`（与 exe 同目录），不上传
 
