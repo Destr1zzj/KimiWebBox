@@ -13,14 +13,14 @@ Kimi Code CLI 自带 `kimi web`（本地 Web UI），但每次使用都要开一
 - **单实例**：重复启动只唤起已有窗口，不会起第二个服务
 - **托盘菜单**：打开 / 重启服务 / 额度设置 / 开机自启 / 退出并停止服务
 - **会话保持**：WebView2 使用独立数据目录（`%APPDATA%\KimiWebBox\webview2`），登录状态不丢
-- **用量与额度面板**：窗口右下角悬浮 chip，点开显示 今日/近7天/本月/累计 token 用量，以及 5 小时/每周/每月额度条（额度需配置凭据，见下）；深色/浅色自适应。托盘 tooltip 同步显示今日用量与 5 小时剩余
+- **用量与额度面板**：窗口右下角悬浮 chip，点开显示 今日/近7天/本月/累计 token 用量，以及 5 小时/每周/每月额度条（5 小时 + 每周零配置自动可读，见下）；深色/浅色自适应。托盘 tooltip 同步显示今日用量与 5 小时剩余
 
 ## 用量与额度
 
 - **Token 用量**：只读扫描本机会话文件（`~/.kimi-code/sessions` 与 `~/.kimi/sessions`)，无需任何凭据
-- **额度**：直连 Kimi API，需要凭据（托盘右键 → 额度设置）:
-  - `kimi-auth` Cookie（浏览器登录 kimi.com → F12 → Application → Cookies 复制）——可见 5 小时 + 每周 + 每月
-  - 或 Kimi Code API Key——仅 5 小时 + 每周
+- **额度**：默认**无需任何凭据**——自动走本地 kimi web 的 OAuth 额度接口（使用本机 Kimi Code 登录态），可见 5 小时 + 每周：
+  - 配置 `kimi-auth` Cookie（托盘右键 → 额度设置）可额外解锁每月额度
+  - 或 Kimi Code API Key 作为降级源（仅 5 小时 + 每周）
   - 凭据只保存在本机 `config.local.json`（与 exe 同目录），不上传
 
 用量与额度的数据层实现参考自 [KimiTokenMonitor](https://github.com/Destr1zzj/KimiTokenMonitor)（其接口探测逻辑参考自 [token-monitor](https://github.com/Javis603/token-monitor))，均为 MIT 协议，在此致谢。

@@ -42,11 +42,36 @@ internal static class LimitsClient
         return raw;
     }
 
-    public static async Task<LimitsResult> Fetch(AppConfig config)
+    public static async Task<LimitsResult> Fetch(AppConfig config, int localPort = 0, string? localToken = null)
     {
         var result = new LimitsResult();
         var webToken = NormalizeWebToken(config.KimiAuthToken);
         var key = (config.KimiCodeApiKey ?? "").Trim();
+
+        // 首选:本地 kimi web 的 OAuth 额度接口(CLI 登录态,零配置)
+        if (localPort > 0 && !string.IsNullOrEmpty(localToken))
+        {
+            try
+            {
+                var local = await FetchLocalOAuth(localPort, localToken);
+                if (local.Status == "ok")
+                {
+                    // 有 cookie 时补一刀每月额度(本地接口不含每月)
+                    if (webToken.Length > 0 && !local.Windows.Any(w => w.Kind == "billing"))
+                    {
+                        try
+                        {
+                            var billing = (await FetchWeb(webToken)).FirstOrDefault(w => w.Kind == "billing");
+                            if (billing != null) local.Windows.Add(billing);
+                        }
+                        catch { }
+                    }
+                    return local;
+                }
+            }
+            catch { }
+        }
+
         if (webToken.Length == 0 && key.Length == 0) return result;
 
         var webWindows = new List<LimitWindow>();
@@ -84,6 +109,52 @@ internal static class LimitsClient
     {
         public readonly string Status;
         public QuotaError(string status) { Status = status; }
+    }
+
+    // Local kimi web server: GET /api/v1/oauth/usage uses the CLI's own OAuth login.
+    // Response: { code, data: { kind:"ok", summary:{window,used,limit,reset_at}, limits:[...] } }
+    private static async Task<LimitsResult> FetchLocalOAuth(int port, string token)
+    {
+        var result = new LimitsResult { Source = "local" };
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{port}/api/v1/oauth/usage");
+        request.Headers.TryAddWithoutValidation("Authorization", "Bearer " + token);
+        using var response = await client.SendAsync(request);
+        ThrowIfBad(response);
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync());
+        var data = Obj(body, "data");
+        if (data == null || Str(data, "kind") != "ok")
+        {
+            result.Status = "unavailable";
+            return result;
+        }
+
+        void AddEntry(JsonObject? entry)
+        {
+            if (entry == null) return;
+            var used = Num(entry, "used");
+            var limit = Num(entry, "limit");
+            if (!used.HasValue || limit is not > 0) return;
+            var minutes = WindowMinutes(Obj(entry, "window"));
+            if (!minutes.HasValue) return;
+            var kind = minutes.Value <= 360 ? "session" : minutes.Value <= 10800 ? "weekly" : "billing";
+            if (result.Windows.Any(w => w.Kind == kind)) return;
+            result.Windows.Add(new LimitWindow
+            {
+                Kind = kind,
+                Label = kind == "session" ? "5 小时" : kind == "weekly" ? "每周" : "每月",
+                RemainingPercent = Clamp(100 - used.Value / limit.Value * 100),
+                ResetsAt = ParseTime(entry, "reset_at", "resetAt", "resetTime"),
+            });
+        }
+
+        foreach (var entry in Arr(data, "limits") ?? new JsonArray()) AddEntry(entry as JsonObject);
+        AddEntry(Obj(data, "summary"));
+        result.Windows = result.Windows
+            .OrderBy(w => w.Kind == "session" ? 0 : w.Kind == "weekly" ? 1 : 2)
+            .ToList();
+        result.Status = result.Windows.Count > 0 ? "ok" : "unavailable";
+        return result;
     }
 
     private static async Task<List<LimitWindow>> FetchWeb(string token)

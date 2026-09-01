@@ -20,7 +20,7 @@ internal sealed class SettingsForm : Form
         var hint = new Label
         {
             Left = 16, Top = 12, Width = 510, Height = 56,
-            Text = "kimi-auth Cookie 获取方式：浏览器登录 kimi.com → F12 → 应用(Application) → Cookies → 复制 kimi-auth 的值。\n填 Cookie 可看到 5 小时 + 每周 + 每月额度；只填 API Key 则只有 5 小时 + 每周。",
+            Text = "无需任何配置即可自动读取 5 小时 + 每周额度（来自本机 Kimi Code 登录态）。\n填 kimi-auth Cookie 可额外解锁每月额度：浏览器登录 kimi.com → F12 → 应用(Application) → Cookies → 复制 kimi-auth 的值。",
         };
         var cookieLabel = new Label { Left = 16, Top = 76, Width = 140, Text = "kimi-auth Cookie" };
         _cookieBox = new TextBox

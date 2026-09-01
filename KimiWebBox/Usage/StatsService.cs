@@ -25,6 +25,10 @@ internal sealed class StatsService : IDisposable
     public StatsSnapshot Current { get; } = new();
     public event Action<StatsSnapshot>? Updated;
 
+    // Local kimi web server coordinates — set by MainForm once the server is up.
+    public int LocalPort;
+    public string? LocalToken;
+
     public StatsService(AppConfig config)
     {
         _config = config;
@@ -58,7 +62,8 @@ internal sealed class StatsService : IDisposable
         if (Interlocked.Exchange(ref _limitsBusy, 1) != 0) return;
         try
         {
-            var r = await LimitsClient.Fetch(_config);
+            var r = await LimitsClient.Fetch(_config, LocalPort, LocalToken);
+            ShellLog.Write($"limits: status={r.Status} source={r.Source} windows={r.Windows.Count}");
             Current.LimitsStatus = r.Status;
             Current.Windows = r.Windows;
             Current.UpdatedAt = DateTime.Now;

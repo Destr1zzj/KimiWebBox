@@ -156,6 +156,9 @@ internal sealed class MainForm : Form
             var token = _server.ReadToken();
             var url = $"http://127.0.0.1:{_server.Port}/" + (string.IsNullOrEmpty(token) ? "" : "#token=" + token);
             _web.CoreWebView2.Navigate(url);
+            _stats.LocalPort = _server.Port ?? 0;
+            _stats.LocalToken = token;
+            _ = _stats.RefreshLimitsAsync();
         }
         catch (Exception ex)
         {
